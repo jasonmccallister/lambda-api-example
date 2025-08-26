@@ -73,8 +73,9 @@ export class LambdaExample {
   @func()
   async deploy(): Promise<string> {
     // make sure there is a role with the name
+    const zip = this.zip();
     const role = await this.createRole(this.roleName);
-    const fn = await this.createFunction(this.functionName, role);
+    const fn = await this.createFunction(this.functionName, role, zip);
     const url = await this.createFunctionUrl(fn);
 
     // make sure the function exists
@@ -149,7 +150,8 @@ export class LambdaExample {
   @func()
   async createFunction(
     functionName: string,
-    roleName: string
+    roleName: string,
+    zipFile: File
   ): Promise<string> {
     const client = new LambdaClient({});
 
@@ -159,10 +161,7 @@ export class LambdaExample {
         new GetFunctionCommand({ FunctionName: functionName })
       );
       if (getFunctionResponse.Configuration?.FunctionArn) {
-        // Function exists, update the code
-        const zipFile = this.zip();
-        const zipContents = await zipFile.contents();
-        const zipBytes = new TextEncoder().encode(zipContents);
+        const zipBytes = new TextEncoder().encode(await zipFile.contents());
 
         await client.send(
           new UpdateFunctionCodeCommand({
@@ -184,9 +183,7 @@ export class LambdaExample {
     }
 
     // Create the function if it doesn't exist
-    const zipFile = this.zip();
-    const zipContents = await zipFile.contents();
-    const zipBytes = new TextEncoder().encode(zipContents);
+    const zipBytes = new TextEncoder().encode(await zipFile.contents());
 
     const createFunctionResponse = await client.send(
       new CreateFunctionCommand({
