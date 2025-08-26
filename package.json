@@ -14,5 +14,9 @@
     "@types/aws-lambda": "^8.10.137",
     "esbuild": "^0.23.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-iam": "^3.873.0",
+    "@aws-sdk/client-lambda": "^3.873.0"
   }
 }
