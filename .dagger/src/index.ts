@@ -78,6 +78,7 @@ export class LambdaExample {
     return this.base()
       .withExec(["yarn", "build"])
       .withExec(["yarn", "zip"])
+      .terminal()
       .file("./function.zip");
   }
 
@@ -107,26 +108,30 @@ export class LambdaExample {
 
     // does the role exist?
     if (!(await this.roleExists(iamClient, this.roleName))) {
+      console.log("Creating new role " + this.roleName);
+
       await this.createRole(iamClient, this.roleName);
     }
-
-    // get the zip file and place in a temp dir
-    const zipFile = dag
-      .directory()
-      .withFile("function.zip", this.zip())
-      .file("function.zip");
 
     let functionUrl = "";
     // does the function exist?
     if (!(await this.functionExists(lambdaClient, this.functionName))) {
+      console.log("Creating new function " + this.functionName);
+
       functionUrl = await this.createFunction(
         lambdaClient,
         this.functionName,
         this.roleName,
-        zipFile
+        this.zip()
       );
     } else {
-      await this.updateFunctionCode(lambdaClient, this.functionName, zipFile);
+      console.log("Updating existing function " + this.functionName);
+
+      await this.updateFunctionCode(
+        lambdaClient,
+        this.functionName,
+        this.zip()
+      );
     }
 
     return Promise.resolve("deployed lambda function on url " + functionUrl);
@@ -237,10 +242,8 @@ export class LambdaExample {
     functionName: string,
     zipFile: File
   ): Promise<string> {
+    // Read the zip file contents as Uint8Array
     const zipBytes = new TextEncoder().encode(await zipFile.contents());
-    if (zipBytes.length === 0) {
-      throw new Error("Zip file is empty");
-    }
 
     await client.send(
       new UpdateFunctionCodeCommand({
@@ -262,7 +265,7 @@ export class LambdaExample {
   }
 
   /**
-   * Creates a new Lambda function using the AWS SDK if the function does not already exist
+   * Creates a new Lambda function using the AWS SDK
    * @param functionName The name of the function to create
    * @param roleName The name of the IAM role for the function
    * @returns The ARN of the created or existing function
@@ -273,23 +276,12 @@ export class LambdaExample {
     roleName: string,
     zipFile: File
   ): Promise<string> {
-    // Check if the function already exists
-    if (await this.functionExists(client, functionName)) {
-      // Function exists, update the code
-      const functionArn = await this.updateFunctionCode(
-        client,
-        functionName,
-        zipFile
-      );
-
-      // Ensure function URL is created for existing function
-      return await this.createFunctionUrl(client, functionName);
+    const zipBytes = new TextEncoder().encode(await zipFile.contents());
+    if (!zipBytes || zipBytes.length === 0) {
+      throw new Error("Zip file is empty");
     }
 
-    // Create the function if it doesn't exist
-    const zipBytes = new TextEncoder().encode(await zipFile.contents());
-
-    const createFunctionResponse = await client.send(
+    const response = await client.send(
       new CreateFunctionCommand({
         FunctionName: functionName,
         Runtime: "nodejs20.x",
@@ -308,7 +300,7 @@ export class LambdaExample {
       })
     );
 
-    if (!createFunctionResponse.FunctionArn) {
+    if (!response.FunctionArn) {
       throw new Error("Failed to create function - no ARN returned");
     }
 
