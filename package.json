@@ -1,0 +1,26 @@
+{
+  "name": "ts-lambda-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo \"CDK uses esbuild via NodejsFunction; nothing to build here\"",
+    "cdk": "cdk",
+    "bootstrap": "cdk bootstrap",
+    "deploy": "cdk deploy",
+    "destroy": "cdk destroy"
+  },
+  "devDependencies": {
+    "aws-cdk-lib": "2.152.0",
+    "constructs": "10.3.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.4.0",
+    "@types/aws-lambda": "^8.10.129",
+    "aws-cdk": "2.152.0",
+    "source-map-support": "^0.5.21"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.152.0",
+    "constructs": "10.3.0"
+  }
+}
