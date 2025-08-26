@@ -9,6 +9,7 @@ import {
   File,
   object,
   func,
+  Secret,
 } from "@dagger.io/dagger";
 import {
   CreateRoleCommand,
@@ -28,12 +29,22 @@ import {
 
 @object()
 export class LambdaExample {
+  source: Directory;
+  private baseImage = "node:20";
+  private functionName = "lambda-example";
+  private roleName = "lambda-example-role";
+
   constructor(
-    @argument({ defaultPath: "/" }) private source: Directory,
-    private baseImage = "node:20",
-    private functionName = "lambda-example",
-    private roleName = "lambda-example-role"
-  ) {}
+    @argument({ defaultPath: "/" }) source: Directory,
+    baseImage = "node:20",
+    functionName = "lambda-example",
+    roleName = "lambda-example-role"
+  ) {
+    this.source = source;
+    this.baseImage = baseImage;
+    this.functionName = functionName;
+    this.roleName = roleName;
+  }
 
   /**
    * Returns the node base image with the project setup
@@ -43,9 +54,12 @@ export class LambdaExample {
     return dag
       .container()
       .from(this.baseImage)
+      .withExec(["apt", "update"])
+      .withExec(["apt", "install", "zip"])
       .withWorkdir("/src")
+      .withMountedCache("/root/.npm", dag.cacheVolume("node-20"))
       .withDirectory("/src", this.source)
-      .withExec(["yarn", "install"]);
+      .withExec(["yarn", "install", "--frozen-lockfile"]);
   }
 
   /**
@@ -71,15 +85,51 @@ export class LambdaExample {
    * Runs the full build and deploy process
    */
   @func()
-  async deploy(): Promise<string> {
-    // make sure there is a role with the name
-    const zip = this.zip();
-    const role = await this.createRole(this.roleName);
-    const fn = await this.createFunction(this.functionName, role, zip);
-    const url = await this.createFunctionUrl(fn);
+  async deploy(
+    accessKey: Secret,
+    secretKey: Secret,
+    sessionToken?: Secret,
+    region: string = "us-east-2"
+  ): Promise<string> {
+    const config = {
+      region,
+      credentials: {
+        accessKeyId: await accessKey.plaintext(),
+        secretAccessKey: await secretKey.plaintext(),
+        ...(sessionToken
+          ? { sessionToken: await sessionToken.plaintext() }
+          : {}),
+      },
+    };
 
-    // make sure the function exists
-    return this.base().withExec(["yarn", "deploy"]).stdout();
+    const iamClient = new IAMClient(config);
+    const lambdaClient = new LambdaClient(config);
+
+    // does the role exist?
+    if (!(await this.roleExists(iamClient, this.roleName))) {
+      await this.createRole(iamClient, this.roleName);
+    }
+
+    // get the zip file and place in a temp dir
+    const zipFile = dag
+      .directory()
+      .withFile("function.zip", this.zip())
+      .file("function.zip");
+
+    let functionUrl = "";
+    // does the function exist?
+    if (!(await this.functionExists(lambdaClient, this.functionName))) {
+      functionUrl = await this.createFunction(
+        lambdaClient,
+        this.functionName,
+        this.roleName,
+        zipFile
+      );
+    } else {
+      await this.updateFunctionCode(lambdaClient, this.functionName, zipFile);
+    }
+
+    return Promise.resolve("deployed lambda function on url " + functionUrl);
   }
 
   /**
@@ -87,22 +137,17 @@ export class LambdaExample {
    * @param roleName The name of the role to create
    * @returns The ARN of the created role
    */
-  @func()
-  async createRole(roleName: string): Promise<string> {
-    const client = new IAMClient({});
-
-    try {
-      // Check if the role already exists
+  private async createRole(
+    client: IAMClient,
+    roleName: string
+  ): Promise<string> {
+    // Check if the role already exists
+    if (await this.roleExists(client, roleName)) {
       const getRoleResponse = await client.send(
         new GetRoleCommand({ RoleName: roleName })
       );
       if (getRoleResponse.Role?.Arn) {
         return getRoleResponse.Role.Arn;
-      }
-    } catch (error: any) {
-      // Role doesn't exist if we get NoSuchEntity error
-      if (error.name !== "NoSuchEntityException") {
-        throw error;
       }
     }
 
@@ -142,44 +187,103 @@ export class LambdaExample {
   }
 
   /**
+   * Checks if an IAM role exists
+   * @param roleName The name of the role to check
+   * @returns True if the role exists, false otherwise
+   */
+  private async roleExists(
+    client: IAMClient,
+    roleName: string
+  ): Promise<boolean> {
+    try {
+      await client.send(new GetRoleCommand({ RoleName: roleName }));
+      return true;
+    } catch (error: any) {
+      if (error.name === "NoSuchEntityException") {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Checks if a Lambda function exists
+   * @param functionName The name of the function to check
+   * @returns True if the function exists, false otherwise
+   */
+  private async functionExists(
+    client: LambdaClient,
+    functionName: string
+  ): Promise<boolean> {
+    try {
+      await client.send(new GetFunctionCommand({ FunctionName: functionName }));
+      return true;
+    } catch (error: any) {
+      if (error.name === "ResourceNotFoundException") {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Updates the code of an existing Lambda function
+   * @param functionName The name of the function to update
+   * @param zipFile The zip file containing the new code
+   * @returns The function ARN
+   */
+  private async updateFunctionCode(
+    client: LambdaClient,
+    functionName: string,
+    zipFile: File
+  ): Promise<string> {
+    const zipBytes = new TextEncoder().encode(await zipFile.contents());
+    if (zipBytes.length === 0) {
+      throw new Error("Zip file is empty");
+    }
+
+    await client.send(
+      new UpdateFunctionCodeCommand({
+        FunctionName: functionName,
+        ZipFile: zipBytes,
+      })
+    );
+
+    // Get the updated function ARN
+    const getFunctionResponse = await client.send(
+      new GetFunctionCommand({ FunctionName: functionName })
+    );
+
+    if (!getFunctionResponse.Configuration?.FunctionArn) {
+      throw new Error("Failed to get function ARN after update");
+    }
+
+    return getFunctionResponse.Configuration.FunctionArn;
+  }
+
+  /**
    * Creates a new Lambda function using the AWS SDK if the function does not already exist
    * @param functionName The name of the function to create
    * @param roleName The name of the IAM role for the function
    * @returns The ARN of the created or existing function
    */
-  @func()
-  async createFunction(
+  private async createFunction(
+    client: LambdaClient,
     functionName: string,
     roleName: string,
     zipFile: File
   ): Promise<string> {
-    const client = new LambdaClient({});
-
-    try {
-      // Check if the function already exists
-      const getFunctionResponse = await client.send(
-        new GetFunctionCommand({ FunctionName: functionName })
+    // Check if the function already exists
+    if (await this.functionExists(client, functionName)) {
+      // Function exists, update the code
+      const functionArn = await this.updateFunctionCode(
+        client,
+        functionName,
+        zipFile
       );
-      if (getFunctionResponse.Configuration?.FunctionArn) {
-        const zipBytes = new TextEncoder().encode(await zipFile.contents());
 
-        await client.send(
-          new UpdateFunctionCodeCommand({
-            FunctionName: functionName,
-            ZipFile: zipBytes,
-          })
-        );
-
-        // Ensure function URL is created for existing function
-        await this.createFunctionUrl(functionName);
-
-        return getFunctionResponse.Configuration.FunctionArn;
-      }
-    } catch (error: any) {
-      // Function doesn't exist if we get ResourceNotFound error
-      if (error.name !== "ResourceNotFoundException") {
-        throw error;
-      }
+      // Ensure function URL is created for existing function
+      return await this.createFunctionUrl(client, functionName);
     }
 
     // Create the function if it doesn't exist
@@ -189,7 +293,7 @@ export class LambdaExample {
       new CreateFunctionCommand({
         FunctionName: functionName,
         Runtime: "nodejs20.x",
-        Role: await this.createRole(roleName),
+        Role: roleName,
         Handler: "index.handler",
         Architectures: ["arm64"],
         Code: {
@@ -209,9 +313,7 @@ export class LambdaExample {
     }
 
     // Create function URL for the new function
-    await this.createFunctionUrl(functionName);
-
-    return createFunctionResponse.FunctionArn;
+    return await this.createFunctionUrl(client, functionName);
   }
 
   /**
@@ -219,10 +321,10 @@ export class LambdaExample {
    * @param functionName The name of the function to create URL config for
    * @returns The function URL
    */
-  @func()
-  async createFunctionUrl(functionName: string): Promise<string> {
-    const client = new LambdaClient({});
-
+  private async createFunctionUrl(
+    client: LambdaClient,
+    functionName: string
+  ): Promise<string> {
     try {
       // Check if function URL already exists
       const getFunctionUrlResponse = await client.send(
