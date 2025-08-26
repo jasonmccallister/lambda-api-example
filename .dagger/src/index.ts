@@ -26,6 +26,7 @@ import {
   GetFunctionUrlConfigCommand,
   AddPermissionCommand,
 } from "@aws-sdk/client-lambda";
+import { readFileSync } from "fs";
 
 @object()
 export class LambdaExample {
@@ -78,7 +79,6 @@ export class LambdaExample {
     return this.base()
       .withExec(["yarn", "build"])
       .withExec(["yarn", "zip"])
-      .terminal()
       .file("./function.zip");
   }
 
@@ -127,7 +127,7 @@ export class LambdaExample {
     } else {
       console.log("Updating existing function " + this.functionName);
 
-      await this.updateFunctionCode(
+      functionUrl = await this.updateFunctionCode(
         lambdaClient,
         this.functionName,
         this.zip()
@@ -242,15 +242,19 @@ export class LambdaExample {
     functionName: string,
     zipFile: File
   ): Promise<string> {
-    // Read the zip file contents as Uint8Array
-    const zipBytes = new TextEncoder().encode(await zipFile.contents());
+    const zipBytes = await this.readZipFileBytes(zipFile);
 
-    await client.send(
-      new UpdateFunctionCodeCommand({
-        FunctionName: functionName,
-        ZipFile: zipBytes,
-      })
-    );
+    try {
+      await client.send(
+        new UpdateFunctionCodeCommand({
+          FunctionName: functionName,
+          ZipFile: zipBytes,
+        })
+      );
+    } catch (error) {
+      console.error("Error updating function code:", error);
+      throw error;
+    }
 
     // Get the updated function ARN
     const getFunctionResponse = await client.send(
@@ -261,7 +265,8 @@ export class LambdaExample {
       throw new Error("Failed to get function ARN after update");
     }
 
-    return getFunctionResponse.Configuration.FunctionArn;
+    //todo make this call get function url
+    return await this.createFunctionUrl(client, functionName);
   }
 
   /**
@@ -276,10 +281,8 @@ export class LambdaExample {
     roleName: string,
     zipFile: File
   ): Promise<string> {
-    const zipBytes = new TextEncoder().encode(await zipFile.contents());
-    if (!zipBytes || zipBytes.length === 0) {
-      throw new Error("Zip file is empty");
-    }
+    // Export the zip file to get it as proper binary data
+    const zipBytes = await this.readZipFileBytes(zipFile);
 
     const response = await client.send(
       new CreateFunctionCommand({
@@ -306,6 +309,21 @@ export class LambdaExample {
 
     // Create function URL for the new function
     return await this.createFunctionUrl(client, functionName);
+  }
+
+  /**
+   * Reads the contents of a zip file and returns it as a byte array
+   * @param zipFile The zip file to read
+   * @returns The contents of the zip file as a byte array
+   */
+  private async readZipFileBytes(zipFile: File) {
+    const zipPath = "/tmp/create_function.zip";
+    await zipFile.export(zipPath);
+    const zipBytes = readFileSync(zipPath);
+    if (!zipBytes || zipBytes.length === 0) {
+      throw new Error("Zip file is empty");
+    }
+    return zipBytes;
   }
 
   /**
