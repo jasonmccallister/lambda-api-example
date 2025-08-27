@@ -6,6 +6,10 @@
   },
   "dependencies": [
     {
+      "name": "aws-iam",
+      "source": "modules/aws-iam"
+    },
+    {
       "name": "aws-lambda",
       "source": "modules/aws-lambda"
     }

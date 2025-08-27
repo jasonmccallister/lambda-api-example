@@ -11,13 +11,6 @@ import {
   func,
   Secret,
 } from "@dagger.io/dagger";
-import {
-  CreateRoleCommand,
-  GetRoleCommand,
-  IAMClient,
-  AttachRolePolicyCommand,
-  DeleteRoleCommand,
-} from "@aws-sdk/client-iam";
 
 @object()
 export class LambdaApiExample {
@@ -95,29 +88,19 @@ export class LambdaApiExample {
     // run the tests
     await this.test();
 
-    const config = {
-      region,
-      credentials: {
-        accessKeyId: await accessKey.plaintext(),
-        secretAccessKey: await secretKey.plaintext(),
-        ...(sessionToken
-          ? { sessionToken: await sessionToken.plaintext() }
-          : {}),
-      },
-    };
-
-    const iamClient = new IAMClient(config);
-
+    const iam = dag.awsIam(accessKey, secretKey, region, {
+      sessionToken,
+    });
     const lambda = dag.awsLambda(accessKey, secretKey, region, {
       sessionToken,
     });
 
-    let roleArn = await this.roleExists(iamClient, this.roleName);
+    let roleArn = await iam.exists(this.roleName);
     // does the role exist?
     if (!roleArn) {
       console.log("Creating new role " + this.roleName);
 
-      roleArn = await this.createRole(iamClient, this.roleName);
+      roleArn = await iam.create(this.roleName);
     }
 
     if (!(await lambda.exists(this.functionName))) {
@@ -172,23 +155,25 @@ export class LambdaApiExample {
       },
     };
 
-    const iamClient = new IAMClient(config);
+    const iam = dag.awsIam(accessKey, secretKey, region, {
+      sessionToken,
+    });
     const lambda = dag.awsLambda(accessKey, secretKey, region, {
       sessionToken,
     });
 
     // Check if the function exists
     if (await lambda.exists(this.functionName)) {
-      console.log("Deleting function " + this.functionName + "...");
+      console.log("Removing function " + this.functionName + "...");
 
-      await lambda.delete_(this.functionName);
+      await lambda.remove(this.functionName);
     }
 
     // Check if the role exists
-    if (await this.roleExists(iamClient, this.roleName)) {
-      console.log("Deleting role " + this.roleName + "...");
+    if (await iam.exists(this.roleName)) {
+      console.log("Removing role " + this.roleName + "...");
 
-      await iamClient.send(new DeleteRoleCommand({ RoleName: this.roleName }));
+      await iam.remove(this.roleName);
     }
 
     // delete the function url config
@@ -201,86 +186,5 @@ export class LambdaApiExample {
     return Promise.resolve(
       "Lambda function " + this.functionName + " successfully destroyed"
     );
-  }
-
-  /**
-   * Creates a new IAM role using the AWS SDK if the role does not already exist
-   * @param roleName The name of the role to create
-   * @returns The ARN of the created role
-   */
-  private async createRole(
-    client: IAMClient,
-    roleName: string
-  ): Promise<string> {
-    // Create the role if it doesn't exist
-    const trustPolicy = {
-      Version: "2012-10-17",
-      Statement: [
-        {
-          Effect: "Allow",
-          Principal: {
-            Service: "lambda.amazonaws.com",
-          },
-          Action: "sts:AssumeRole",
-        },
-      ],
-    };
-
-    const createRoleResponse = await client.send(
-      new CreateRoleCommand({
-        RoleName: roleName,
-        AssumeRolePolicyDocument: JSON.stringify(trustPolicy),
-      })
-    );
-
-    if (!createRoleResponse.Role?.Arn) {
-      throw new Error("Failed to create role - no ARN returned");
-    }
-
-    await client.send(
-      new AttachRolePolicyCommand({
-        RoleName: roleName,
-        PolicyArn: "arn:aws:policy/service-role/AWSLambdaBasicExecutionRole",
-      })
-    );
-
-    // Wait for the role to be available (up to 5 attempts)
-    let attempts = 0;
-    const maxAttempts = 5;
-    while (attempts < maxAttempts) {
-      let roleArn = await this.roleExists(client, roleName);
-      if (roleArn) {
-        console.log(`Role ${roleName} is ready`);
-        break; // Role exists, exit loop
-      }
-
-      // sleep for 2 seconds
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
-
-    return createRoleResponse.Role.Arn;
-  }
-
-  /**
-   * Checks if an IAM role exists
-   * @param roleName The name of the role to check
-   * @returns True if the role exists, false otherwise
-   */
-  private async roleExists(
-    client: IAMClient,
-    roleName: string
-  ): Promise<string | undefined> {
-    try {
-      const getRoleResponse = await client.send(
-        new GetRoleCommand({ RoleName: roleName })
-      );
-
-      return getRoleResponse.Role?.Arn || undefined;
-    } catch (error: any) {
-      if (error.name === "NoSuchEntityException") {
-        return undefined;
-      }
-      throw error;
-    }
   }
 }

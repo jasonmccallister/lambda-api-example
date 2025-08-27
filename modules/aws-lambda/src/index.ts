@@ -155,11 +155,11 @@ export class AwsLambda {
   }
 
   /**
-   * Deletes a Lambda function
-   * @param functionName The name of the Lambda function to delete
+   * Removes a Lambda function
+   * @param functionName The name of the Lambda function to remove
    */
   @func()
-  async delete(functionName: string): Promise<void> {
+  async remove(functionName: string): Promise<void> {
     const client = await this.getClient();
 
     try {
