@@ -109,11 +109,12 @@ export class LambdaExample {
     const iamClient = new IAMClient(config);
     const lambdaClient = new LambdaClient(config);
 
+    let roleArn = await this.roleExists(iamClient, this.roleName);
     // does the role exist?
-    if (!(await this.roleExists(iamClient, this.roleName))) {
+    if (!roleArn) {
       console.log("Creating new role " + this.roleName);
 
-      await this.createRole(iamClient, this.roleName);
+      roleArn = await this.createRole(iamClient, this.roleName);
     }
 
     let functionUrl = "";
@@ -124,7 +125,7 @@ export class LambdaExample {
       functionUrl = await this.createFunction(
         lambdaClient,
         this.functionName,
-        this.roleName,
+        roleArn,
         this.zip()
       );
     } else {
@@ -207,16 +208,6 @@ export class LambdaExample {
     client: IAMClient,
     roleName: string
   ): Promise<string> {
-    // Check if the role already exists
-    if (await this.roleExists(client, roleName)) {
-      const getRoleResponse = await client.send(
-        new GetRoleCommand({ RoleName: roleName })
-      );
-      if (getRoleResponse.Role?.Arn) {
-        return getRoleResponse.Role.Arn;
-      }
-    }
-
     // Create the role if it doesn't exist
     const trustPolicy = {
       Version: "2012-10-17",
@@ -260,13 +251,16 @@ export class LambdaExample {
   private async roleExists(
     client: IAMClient,
     roleName: string
-  ): Promise<boolean> {
+  ): Promise<string | undefined> {
     try {
-      await client.send(new GetRoleCommand({ RoleName: roleName }));
-      return true;
+      const getRoleResponse = await client.send(
+        new GetRoleCommand({ RoleName: roleName })
+      );
+
+      return getRoleResponse.Role?.Arn || undefined;
     } catch (error: any) {
       if (error.name === "NoSuchEntityException") {
-        return false;
+        return undefined;
       }
       throw error;
     }
@@ -339,7 +333,7 @@ export class LambdaExample {
   private async createFunction(
     client: LambdaClient,
     functionName: string,
-    roleName: string,
+    roleArn: string,
     zipFile: File
   ): Promise<string> {
     // Export the zip file to get it as proper binary data
@@ -349,7 +343,7 @@ export class LambdaExample {
       new CreateFunctionCommand({
         FunctionName: functionName,
         Runtime: "nodejs20.x",
-        Role: roleName,
+        Role: roleArn,
         Handler: "index.handler",
         Architectures: ["arm64"],
         Code: {
