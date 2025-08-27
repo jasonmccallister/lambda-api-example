@@ -170,7 +170,8 @@ export class LambdaExample {
 
     // Check if the function exists
     if (await this.functionExists(lambdaClient, this.functionName)) {
-      console.log("Deleting function " + this.functionName);
+      console.log("Deleting function " + this.functionName + "...");
+
       await lambdaClient.send(
         new DeleteFunctionCommand({ FunctionName: this.functionName })
       );
@@ -178,20 +179,22 @@ export class LambdaExample {
 
     // Check if the role exists
     if (await this.roleExists(iamClient, this.roleName)) {
-      console.log("Deleting role " + this.roleName);
+      console.log("Deleting role " + this.roleName + "...");
+
       await iamClient.send(new DeleteRoleCommand({ RoleName: this.roleName }));
     }
 
     // delete the function url config
     if (await this.functionUrlExists(lambdaClient, this.functionName)) {
-      console.log("Deleting function URL for " + this.functionName);
+      console.log("Deleting function URL for " + this.functionName + "...");
+
       await lambdaClient.send(
         new DeleteFunctionUrlConfigCommand({ FunctionName: this.functionName })
       );
     }
 
     return Promise.resolve(
-      "Lambda function " + this.functionName + " destroyed"
+      "Lambda function " + this.functionName + " successfully destroyed"
     );
   }
 
