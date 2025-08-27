@@ -10,18 +10,18 @@ const html = /* html */ `<!doctype html>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="min-h-screen bg-gray-50 text-gray-900">
-  <main class="max-w-xl mx-auto p-6">
-    <header class="mb-6">
-      <h1 class="text-3xl font-bold">Hello from AWS Lambda deployed by Dagger! 👋</h1>
+  <main class="max-w-2xl mx-auto p-4">
+    <header class="mb-6 text-center">
+      <h1 class="text-2xl font-bold">Hello from AWS Lambda deployed by Dagger! 👋</h1>
       <p class="text-gray-600 mt-2">This page is served by a Lambda Function URL.<br />Click the button to call the API.</p>
     </header>
 
-    <section class="bg-white shadow rounded-2xl p-6">
+    <section class="bg-white shadow rounded-2xl p-6 text-center">
       <button id="btn" class="px-4 py-2 rounded-xl shadow hover:shadow-md border w-full sm:w-auto">
         Call API
       </button>
 
-      <pre id="out" class="mt-4 p-4 bg-gray-100 rounded overflow-x-auto text-sm"></pre>
+      <pre id="out" class="text-left mt-4 p-4 bg-gray-100 rounded overflow-x-auto text-sm"></pre>
     </section>
 
     <footer class="mt-8 text-xs text-center text-gray-500">
