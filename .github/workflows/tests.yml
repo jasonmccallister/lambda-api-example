@@ -1,4 +1,4 @@
-name: dagger
+name: tests
 on:
   pull_request:
     branches: ["*"]
