@@ -8,12 +8,18 @@
     "zip": "mkdir -p dist && cd dist && zip -r ../function.zip .",
     "clean": "rm -rf dist function.zip",
     "deploy": "bash scripts/deploy.sh",
-    "update": "bash scripts/update.sh"
+    "update": "bash scripts/update.sh",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:ci": "jest --ci --coverage --watchAll=false"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.137",
+    "@types/jest": "^30.0.0",
     "esbuild": "^0.23.0",
+    "jest": "^30.0.5",
+    "ts-jest": "^29.4.1",
     "typescript": "^5.4.0"
-  },
-  "dependencies": {}
+  }
 }

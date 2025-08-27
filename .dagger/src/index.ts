@@ -75,6 +75,15 @@ export class LambdaExample {
   }
 
   /**
+   * Runs the tests
+   * @returns The test output
+   */
+  @func()
+  async test(): Promise<string> {
+    return this.base().withExec(["yarn", "test"]).stdout();
+  }
+
+  /**
    * Creates the Lambda deployment package
    */
   @func()
@@ -95,6 +104,9 @@ export class LambdaExample {
     sessionToken?: Secret,
     region: string = "us-east-2"
   ): Promise<string> {
+    // run the tests
+    await this.test();
+
     const config = {
       region,
       credentials: {
