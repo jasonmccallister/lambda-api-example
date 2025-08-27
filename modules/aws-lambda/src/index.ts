@@ -58,6 +58,20 @@ export class AwsLambda {
   ): Promise<string> {
     const client = await this.getClient();
 
+    // find the matching runtime const from the lambda module
+    const matchingRuntime = Object.values(Runtime).find((r) => r === runtime);
+    if (!matchingRuntime) {
+      throw new Error(`Unsupported runtime: ${runtime}`);
+    }
+
+    // find the matching architecture const from the lambda module
+    const matchingArchitecture = Object.values(Architecture).find(
+      (a) => a === architecture
+    );
+    if (!matchingArchitecture) {
+      throw new Error(`Unsupported architecture: ${architecture}`);
+    }
+
     const response = await client.send(
       new CreateFunctionCommand({
         FunctionName: functionName,
@@ -65,10 +79,8 @@ export class AwsLambda {
         Handler: handler,
         MemorySize: memorySize,
         Timeout: timeout,
-        Architectures: [
-          Architecture[architecture as keyof typeof Architecture],
-        ],
-        Runtime: Runtime[runtime as keyof typeof Runtime],
+        Architectures: [matchingArchitecture],
+        Runtime: matchingRuntime,
         Code: {
           ZipFile: await this.readZipFileBytes(zipFile),
         },

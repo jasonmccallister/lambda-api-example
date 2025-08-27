@@ -81,13 +81,16 @@ export class AwsIam {
     const maxAttempts = 5;
     while (attempts < maxAttempts) {
       let roleArn = await this.exists(roleName);
-      if (roleArn) {
+      if (roleArn !== undefined) {
         console.log(`Role ${roleName} is ready`);
+
         break; // Role exists, exit loop
       }
 
       // sleep for 2 seconds
       await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      attempts++;
     }
 
     return roleArn;
