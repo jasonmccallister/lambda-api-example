@@ -9,7 +9,7 @@
     "clean": "rm -rf dist function.zip",
     "deploy": "bash scripts/deploy.sh",
     "update": "bash scripts/update.sh",
-    "test": "jest",
+    "test": "jest --verbose",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci --coverage --watchAll=false"
