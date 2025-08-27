@@ -16,6 +16,7 @@ import {
   GetRoleCommand,
   IAMClient,
   AttachRolePolicyCommand,
+  DeleteRoleCommand,
 } from "@aws-sdk/client-iam";
 import {
   LambdaClient,
@@ -25,6 +26,8 @@ import {
   CreateFunctionUrlConfigCommand,
   GetFunctionUrlConfigCommand,
   AddPermissionCommand,
+  DeleteFunctionCommand,
+  DeleteFunctionUrlConfigCommand,
 } from "@aws-sdk/client-lambda";
 import { readFileSync } from "fs";
 
@@ -134,7 +137,62 @@ export class LambdaExample {
       );
     }
 
-    return Promise.resolve("deployed lambda function on url " + functionUrl);
+    return Promise.resolve("Lambda deployed on url " + functionUrl);
+  }
+
+  /**
+   * Destroys the Lambda function and its associated resources
+   * @param accessKey Secret access key
+   * @param secretKey Secret key
+   * @param sessionToken Session token
+   * @param region AWS region
+   */
+  @func()
+  async destroy(
+    accessKey: Secret,
+    secretKey: Secret,
+    sessionToken?: Secret,
+    region: string = "us-east-2"
+  ): Promise<string> {
+    const config = {
+      region,
+      credentials: {
+        accessKeyId: await accessKey.plaintext(),
+        secretAccessKey: await secretKey.plaintext(),
+        ...(sessionToken
+          ? { sessionToken: await sessionToken.plaintext() }
+          : {}),
+      },
+    };
+
+    const iamClient = new IAMClient(config);
+    const lambdaClient = new LambdaClient(config);
+
+    // Check if the function exists
+    if (await this.functionExists(lambdaClient, this.functionName)) {
+      console.log("Deleting function " + this.functionName);
+      await lambdaClient.send(
+        new DeleteFunctionCommand({ FunctionName: this.functionName })
+      );
+    }
+
+    // Check if the role exists
+    if (await this.roleExists(iamClient, this.roleName)) {
+      console.log("Deleting role " + this.roleName);
+      await iamClient.send(new DeleteRoleCommand({ RoleName: this.roleName }));
+    }
+
+    // delete the function url config
+    if (await this.functionUrlExists(lambdaClient, this.functionName)) {
+      console.log("Deleting function URL for " + this.functionName);
+      await lambdaClient.send(
+        new DeleteFunctionUrlConfigCommand({ FunctionName: this.functionName })
+      );
+    }
+
+    return Promise.resolve(
+      "Lambda function " + this.functionName + " destroyed"
+    );
   }
 
   /**
@@ -387,5 +445,28 @@ export class LambdaExample {
     }
 
     return createUrlResponse.FunctionUrl;
+  }
+
+  /**
+   * Checks if a Lambda function URL exists
+   * @param client The LambdaClient instance
+   * @param functionName The name of the function
+   * @returns True if the function URL exists, false otherwise
+   */
+  private async functionUrlExists(
+    client: LambdaClient,
+    functionName: string
+  ): Promise<boolean> {
+    try {
+      await client.send(
+        new GetFunctionUrlConfigCommand({ FunctionName: functionName })
+      );
+      return true;
+    } catch (error: any) {
+      if (error.name === "ResourceNotFoundException") {
+        return false;
+      }
+      throw error;
+    }
   }
 }
