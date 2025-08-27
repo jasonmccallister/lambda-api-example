@@ -12,8 +12,8 @@ const html = /* html */ `<!doctype html>
 <body class="min-h-screen bg-gray-50 text-gray-900">
   <main class="max-w-xl mx-auto p-6">
     <header class="mb-6">
-      <h1 class="text-3xl font-bold">Hello from AWS Lambda 👋</h1>
-      <p class="text-gray-600 mt-2">This page is served by a Lambda Function URL. Click the button to call the API.</p>
+      <h1 class="text-3xl font-bold">Hello from AWS Lambda deployed by Dagger! 👋</h1>
+      <p class="text-gray-600 mt-2">This page is served by a Lambda Function URL.<br />Click the button to call the API.</p>
     </header>
 
     <section class="bg-white shadow rounded-2xl p-6">
@@ -24,8 +24,8 @@ const html = /* html */ `<!doctype html>
       <pre id="out" class="mt-4 p-4 bg-gray-100 rounded overflow-x-auto text-sm"></pre>
     </section>
 
-    <footer class="mt-8 text-xs text-gray-500">
-      Tailwind CSS loaded from <code>cdn.tailwindcss.com</code>. Built with a single Lambda.
+    <footer class="mt-8 text-xs text-center text-gray-500">
+      Source code available at <a href="https://github.com/jasonmccallister/lambda-api-example" class="text-blue-500 hover:underline">GitHub</a>.
     </footer>
   </main>
 

@@ -86,7 +86,9 @@ describe("Integration Tests", () => {
       expect(result.statusCode).toBe(200);
       expect(result.headers!["content-type"]).toBe("text/html; charset=utf-8");
       expect(result.body).toContain("<!doctype html>");
-      expect(result.body).toContain("Hello from AWS Lambda 👋");
+      expect(result.body).toContain(
+        "Hello from AWS Lambda deployed by Dagger! 👋"
+      );
     });
 
     it("should handle POST method returning 404", async () => {

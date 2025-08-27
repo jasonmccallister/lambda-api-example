@@ -64,7 +64,9 @@ describe("Lambda Handler", () => {
       expect(result.statusCode).toBe(200);
       expect(result.headers!["content-type"]).toBe("text/html; charset=utf-8");
       expect(result.body).toContain("<!doctype html>");
-      expect(result.body).toContain("Hello from AWS Lambda 👋");
+      expect(result.body).toContain(
+        "Hello from AWS Lambda deployed by Dagger! 👋"
+      );
       expect(result.body).toContain(
         "This page is served by a Lambda Function URL"
       );
