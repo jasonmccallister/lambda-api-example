@@ -252,6 +252,20 @@ export class LambdaApiExample {
       })
     );
 
+    // Wait for the role to be available (up to 5 attempts)
+    let attempts = 0;
+    const maxAttempts = 5;
+    while (attempts < maxAttempts) {
+      let roleArn = await this.roleExists(client, roleName);
+      if (roleArn) {
+        console.log(`Role ${roleName} is ready`);
+        break; // Role exists, exit loop
+      }
+
+      // sleep for 2 seconds
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
     return createRoleResponse.Role.Arn;
   }
 
