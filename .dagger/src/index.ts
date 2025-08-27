@@ -32,7 +32,7 @@ import {
 import { readFileSync } from "fs";
 
 @object()
-export class LambdaExample {
+export class LambdaApiExample {
   source: Directory;
   private baseImage = "node:20";
   private functionName = "lambda-example";

@@ -1,5 +1,5 @@
 {
-  "name": "lambda-example",
+  "name": "lambda-api-example",
   "engineVersion": "v0.18.16",
   "sdk": {
     "source": "typescript"
