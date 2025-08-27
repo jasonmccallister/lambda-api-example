@@ -1,9 +1,9 @@
 name: dagger
 on:
   pull_request:
-    branches: [*]
+    branches: ["*"]
   push:
-    branches: [*]
+    branches: ["*"]
 
 jobs:
   test:
