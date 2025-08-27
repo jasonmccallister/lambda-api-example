@@ -3,12 +3,14 @@ import {
   Architecture,
   CreateFunctionCommand,
   CreateFunctionUrlConfigCommand,
+  DeleteFunctionCommand,
+  DeleteFunctionUrlConfigCommand,
   GetFunctionCommand,
   GetFunctionUrlConfigCommand,
   Runtime,
   UpdateFunctionCodeCommand,
 } from "@aws-sdk/client-lambda";
-import { LambdaClient } from "@aws-sdk/client-lambda/dist-types/LambdaClient";
+import { LambdaClient } from "@aws-sdk/client-lambda";
 import { File, object, func, Secret } from "@dagger.io/dagger";
 import { readFileSync } from "fs";
 
@@ -18,8 +20,6 @@ export class AwsLambda {
   private secretKey: Secret;
   private sessionToken?: Secret;
   private region: string;
-
-  private client: LambdaClient | undefined;
 
   constructor(
     accessKey: Secret,
@@ -82,10 +82,20 @@ export class AwsLambda {
     return response.FunctionArn;
   }
 
+  /**
+   * Creates a new function URL for a Lambda function
+   * @param functionName The name of the Lambda function
+   * @param authType The type of authentication to use for the function URL
+   * @param allowedCorsOrigins The CORS origins to allow for the function URL
+   * @param allowedCorsHeaders The CORS headers to allow for the function URL
+   * @param allowedCorsMethods The CORS methods to allow for the function URL
+   * @param allowCredentials Whether to allow credentials for the function URL
+   * @returns The URL of the created function
+   */
   @func()
   async createFunctionUrl(
     functionName: string,
-    authType: "NONE" | "AWS_IAM",
+    authType: string = "NONE",
     allowedCorsOrigins: string[] = ["*"],
     allowedCorsHeaders: string[] = ["*"],
     allowedCorsMethods: string[] = ["*"],
@@ -109,7 +119,7 @@ export class AwsLambda {
     const create = await client.send(
       new CreateFunctionUrlConfigCommand({
         FunctionName: functionName,
-        AuthType: authType,
+        AuthType: authType as "NONE" | "AWS_IAM",
         Cors: {
           AllowOrigins: allowedCorsOrigins,
           AllowMethods: allowedCorsMethods,
@@ -131,7 +141,7 @@ export class AwsLambda {
           StatementId: "public-url",
           Action: "lambda:InvokeFunctionUrl",
           Principal: "*",
-          FunctionUrlAuthType: authType,
+          FunctionUrlAuthType: authType as "NONE" | "AWS_IAM",
         })
       );
     } catch (error: any) {
@@ -142,6 +152,38 @@ export class AwsLambda {
     }
 
     return create.FunctionUrl;
+  }
+
+  /**
+   * Deletes a Lambda function
+   * @param functionName The name of the Lambda function to delete
+   */
+  @func()
+  async delete(functionName: string): Promise<void> {
+    const client = await this.getClient();
+
+    try {
+      await client.send(
+        new DeleteFunctionCommand({ FunctionName: functionName })
+      );
+    } catch (error: any) {
+      console.error("Error deleting Lambda function:", error);
+      throw error;
+    }
+  }
+
+  @func()
+  async deleteFunctionUrl(functionName: string): Promise<void> {
+    const client = await this.getClient();
+
+    try {
+      await client.send(
+        new DeleteFunctionUrlConfigCommand({ FunctionName: functionName })
+      );
+    } catch (error: any) {
+      console.error("Error deleting Lambda function URL:", error);
+      throw error;
+    }
   }
 
   /**
@@ -164,6 +206,11 @@ export class AwsLambda {
     }
   }
 
+  /**
+   * Checks if a function URL exists for a Lambda function
+   * @param functionName The name of the Lambda function
+   * @returns The URL of the function if it exists, undefined otherwise
+   */
   @func()
   async functionUrlExists(functionName: string): Promise<string | undefined> {
     const client = await this.getClient();
@@ -226,19 +273,15 @@ export class AwsLambda {
    * @returns A Promise that resolves to a LambdaClient instance
    */
   private async getClient(): Promise<LambdaClient> {
-    if (!this.client) {
-      this.client = new LambdaClient({
-        region: this.region,
-        credentials: {
-          accessKeyId: await this.accessKey.plaintext(),
-          secretAccessKey: await this.secretKey.plaintext(),
-          ...(this.sessionToken
-            ? { sessionToken: await this.sessionToken.plaintext() }
-            : {}),
-        },
-      });
-    }
-
-    return this.client;
+    return new LambdaClient({
+      region: this.region,
+      credentials: {
+        accessKeyId: await this.accessKey.plaintext(),
+        secretAccessKey: await this.secretKey.plaintext(),
+        ...(this.sessionToken
+          ? { sessionToken: await this.sessionToken.plaintext() }
+          : {}),
+      },
+    });
   }
 }

@@ -4,5 +4,11 @@
   "sdk": {
     "source": "typescript"
   },
+  "dependencies": [
+    {
+      "name": "aws-lambda",
+      "source": "modules/aws-lambda"
+    }
+  ],
   "source": ".dagger"
 }

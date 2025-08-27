@@ -18,18 +18,6 @@ import {
   AttachRolePolicyCommand,
   DeleteRoleCommand,
 } from "@aws-sdk/client-iam";
-import {
-  LambdaClient,
-  CreateFunctionCommand,
-  GetFunctionCommand,
-  UpdateFunctionCodeCommand,
-  CreateFunctionUrlConfigCommand,
-  GetFunctionUrlConfigCommand,
-  AddPermissionCommand,
-  DeleteFunctionCommand,
-  DeleteFunctionUrlConfigCommand,
-} from "@aws-sdk/client-lambda";
-import { readFileSync } from "fs";
 
 @object()
 export class LambdaApiExample {
@@ -119,7 +107,10 @@ export class LambdaApiExample {
     };
 
     const iamClient = new IAMClient(config);
-    const lambdaClient = new LambdaClient(config);
+
+    const lambda = dag.awsLambda(accessKey, secretKey, region, {
+      sessionToken,
+    });
 
     let roleArn = await this.roleExists(iamClient, this.roleName);
     // does the role exist?
@@ -129,25 +120,28 @@ export class LambdaApiExample {
       roleArn = await this.createRole(iamClient, this.roleName);
     }
 
-    let functionUrl = "";
-    // does the function exist?
-    if (!(await this.functionExists(lambdaClient, this.functionName))) {
+    if (!(await lambda.exists(this.functionName))) {
       console.log("Creating new function " + this.functionName);
 
-      functionUrl = await this.createFunction(
-        lambdaClient,
+      await lambda.create(
         this.functionName,
         roleArn,
+        "index.handler",
+        "nodejs20.x",
         this.zip()
       );
     } else {
       console.log("Updating existing function " + this.functionName);
 
-      functionUrl = await this.updateFunctionCode(
-        lambdaClient,
-        this.functionName,
-        this.zip()
-      );
+      await lambda.updateCode(this.functionName, this.zip());
+    }
+
+    // create the function URL
+    let functionUrl = "";
+    try {
+      functionUrl = await lambda.createFunctionUrl(this.functionName);
+    } catch (error) {
+      console.error("Error creating function URL:", error);
     }
 
     return Promise.resolve("Lambda deployed on url " + functionUrl);
@@ -179,15 +173,15 @@ export class LambdaApiExample {
     };
 
     const iamClient = new IAMClient(config);
-    const lambdaClient = new LambdaClient(config);
+    const lambda = dag.awsLambda(accessKey, secretKey, region, {
+      sessionToken,
+    });
 
     // Check if the function exists
-    if (await this.functionExists(lambdaClient, this.functionName)) {
+    if (await lambda.exists(this.functionName)) {
       console.log("Deleting function " + this.functionName + "...");
 
-      await lambdaClient.send(
-        new DeleteFunctionCommand({ FunctionName: this.functionName })
-      );
+      await lambda.delete_(this.functionName);
     }
 
     // Check if the role exists
@@ -198,12 +192,10 @@ export class LambdaApiExample {
     }
 
     // delete the function url config
-    if (await this.functionUrlExists(lambdaClient, this.functionName)) {
+    if (await lambda.functionUrlExists(this.functionName)) {
       console.log("Deleting function URL for " + this.functionName + "...");
 
-      await lambdaClient.send(
-        new DeleteFunctionUrlConfigCommand({ FunctionName: this.functionName })
-      );
+      await lambda.deleteFunctionUrl(this.functionName);
     }
 
     return Promise.resolve(
@@ -287,207 +279,6 @@ export class LambdaApiExample {
     } catch (error: any) {
       if (error.name === "NoSuchEntityException") {
         return undefined;
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Checks if a Lambda function exists
-   * @param functionName The name of the function to check
-   * @returns True if the function exists, false otherwise
-   */
-  private async functionExists(
-    client: LambdaClient,
-    functionName: string
-  ): Promise<boolean> {
-    try {
-      await client.send(new GetFunctionCommand({ FunctionName: functionName }));
-      return true;
-    } catch (error: any) {
-      if (error.name === "ResourceNotFoundException") {
-        return false;
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Updates the code of an existing Lambda function
-   * @param functionName The name of the function to update
-   * @param zipFile The zip file containing the new code
-   * @returns The function ARN
-   */
-  private async updateFunctionCode(
-    client: LambdaClient,
-    functionName: string,
-    zipFile: File
-  ): Promise<string> {
-    const zipBytes = await this.readZipFileBytes(zipFile);
-
-    try {
-      await client.send(
-        new UpdateFunctionCodeCommand({
-          FunctionName: functionName,
-          ZipFile: zipBytes,
-        })
-      );
-    } catch (error) {
-      console.error("Error updating function code:", error);
-      throw error;
-    }
-
-    // Get the updated function ARN
-    const getFunctionResponse = await client.send(
-      new GetFunctionCommand({ FunctionName: functionName })
-    );
-
-    if (!getFunctionResponse.Configuration?.FunctionArn) {
-      throw new Error("Failed to get function ARN after update");
-    }
-
-    //todo make this call get function url
-    return await this.createFunctionUrl(client, functionName);
-  }
-
-  /**
-   * Creates a new Lambda function using the AWS SDK
-   * @param functionName The name of the function to create
-   * @param roleName The name of the IAM role for the function
-   * @returns The ARN of the created or existing function
-   */
-  private async createFunction(
-    client: LambdaClient,
-    functionName: string,
-    roleArn: string,
-    zipFile: File
-  ): Promise<string> {
-    // Export the zip file to get it as proper binary data
-    const zipBytes = await this.readZipFileBytes(zipFile);
-
-    const response = await client.send(
-      new CreateFunctionCommand({
-        FunctionName: functionName,
-        Runtime: "nodejs20.x",
-        Role: roleArn,
-        Handler: "index.handler",
-        Architectures: ["arm64"],
-        Code: {
-          ZipFile: zipBytes,
-        },
-        Timeout: 10,
-        MemorySize: 256,
-        Environment: {
-          Variables: {},
-        },
-        Description: "Simple Tailwind HTML + JSON API via Lambda Function URL",
-      })
-    );
-
-    if (!response.FunctionArn) {
-      throw new Error("Failed to create function - no ARN returned");
-    }
-
-    // Create function URL for the new function
-    return await this.createFunctionUrl(client, functionName);
-  }
-
-  /**
-   * Reads the contents of a zip file and returns it as a byte array
-   * @param zipFile The zip file to read
-   * @returns The contents of the zip file as a byte array
-   */
-  private async readZipFileBytes(zipFile: File) {
-    const zipPath = "/tmp/create_function.zip";
-    await zipFile.export(zipPath);
-    const zipBytes = readFileSync(zipPath);
-    if (!zipBytes || zipBytes.length === 0) {
-      throw new Error("Zip file is empty");
-    }
-    return zipBytes;
-  }
-
-  /**
-   * Creates a function URL configuration for a Lambda function if it doesn't already exist
-   * @param functionName The name of the function to create URL config for
-   * @returns The function URL
-   */
-  private async createFunctionUrl(
-    client: LambdaClient,
-    functionName: string
-  ): Promise<string> {
-    try {
-      // Check if function URL already exists
-      const getFunctionUrlResponse = await client.send(
-        new GetFunctionUrlConfigCommand({ FunctionName: functionName })
-      );
-      if (getFunctionUrlResponse.FunctionUrl) {
-        return getFunctionUrlResponse.FunctionUrl;
-      }
-    } catch (error: any) {
-      // Function URL doesn't exist if we get ResourceNotFound error
-      if (error.name !== "ResourceNotFoundException") {
-        throw error;
-      }
-    }
-
-    // Create function URL if it doesn't exist
-    const createUrlResponse = await client.send(
-      new CreateFunctionUrlConfigCommand({
-        FunctionName: functionName,
-        AuthType: "NONE",
-        Cors: {
-          AllowOrigins: ["*"],
-          AllowMethods: ["*"],
-          AllowHeaders: ["*"],
-          AllowCredentials: false,
-        },
-      })
-    );
-
-    if (!createUrlResponse.FunctionUrl) {
-      throw new Error("Failed to create function URL - no URL returned");
-    }
-
-    // Add permission so the URL is callable by anyone (public)
-    try {
-      await client.send(
-        new AddPermissionCommand({
-          FunctionName: functionName,
-          StatementId: "public-url",
-          Action: "lambda:InvokeFunctionUrl",
-          Principal: "*",
-          FunctionUrlAuthType: "NONE",
-        })
-      );
-    } catch (error: any) {
-      // Ignore if permission already exists
-      if (error.name !== "ResourceConflictException") {
-        throw error;
-      }
-    }
-
-    return createUrlResponse.FunctionUrl;
-  }
-
-  /**
-   * Checks if a Lambda function URL exists
-   * @param client The LambdaClient instance
-   * @param functionName The name of the function
-   * @returns True if the function URL exists, false otherwise
-   */
-  private async functionUrlExists(
-    client: LambdaClient,
-    functionName: string
-  ): Promise<boolean> {
-    try {
-      await client.send(
-        new GetFunctionUrlConfigCommand({ FunctionName: functionName })
-      );
-      return true;
-    } catch (error: any) {
-      if (error.name === "ResourceNotFoundException") {
-        return false;
       }
       throw error;
     }
