@@ -69,14 +69,21 @@ export class LambdaApiExample {
    */
   @func()
   zip(): File {
-    return this.base()
-      .withExec(["yarn", "build"])
-      .withExec(["yarn", "zip"])
-      .file("./function.zip");
+    return (
+      this.base()
+        // .withExec(["yarn", "build"])
+        .withExec(["yarn", "zip"])
+        .file("./function.zip")
+    );
   }
 
   /**
    * Runs the full build and deploy process
+   * @param accessKey The AWS Secret Access Key to use when deploying
+   * @param secretKey The AWS Secret Key to use when deploying
+   * @param sessionToken The AWS Session Token to use when deploying
+   * @param region The AWS Region to use when deploying
+   * @returns The URL of the deployed Lambda function
    */
   @func()
   async deploy(
@@ -132,10 +139,10 @@ export class LambdaApiExample {
 
   /**
    * Destroys the Lambda function and its associated resources
-   * @param accessKey Secret access key
-   * @param secretKey Secret key
-   * @param sessionToken Session token
-   * @param region AWS region
+   * @param accessKey The AWS Secret Access Key to use when destroying
+   * @param secretKey The AWS Secret Key to use when destroying
+   * @param sessionToken The AWS Session Token to use when destroying
+   * @param region The AWS Region to use when destroying
    */
   @func()
   async destroy(
@@ -144,17 +151,6 @@ export class LambdaApiExample {
     sessionToken?: Secret,
     region: string = "us-east-2"
   ): Promise<string> {
-    const config = {
-      region,
-      credentials: {
-        accessKeyId: await accessKey.plaintext(),
-        secretAccessKey: await secretKey.plaintext(),
-        ...(sessionToken
-          ? { sessionToken: await sessionToken.plaintext() }
-          : {}),
-      },
-    };
-
     const iam = dag.awsIam(accessKey, secretKey, region, {
       sessionToken,
     });

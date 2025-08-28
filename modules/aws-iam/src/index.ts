@@ -88,7 +88,7 @@ export class AwsIam {
       }
 
       // sleep for 2 seconds
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await sleep(2000);
 
       attempts++;
     }
@@ -147,4 +147,8 @@ export class AwsIam {
       throw error;
     }
   }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
