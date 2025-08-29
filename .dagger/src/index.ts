@@ -42,9 +42,15 @@ export class LambdaApiExample {
       .withExec(["apt", "update"])
       .withExec(["apt", "install", "zip"])
       .withWorkdir("/src")
-      .withMountedCache("/root/.npm", dag.cacheVolume("node-20"))
       .withDirectory("/src", this.source)
-      .withExec(["yarn", "install", "--frozen-lockfile"]);
+      .withMountedCache("/root/.npm", dag.cacheVolume("node-20"));
+  }
+
+  @func()
+  installDeps(): Directory {
+    return this.base()
+      .withExec(["yarn", "install"])
+      .directory("./node_modules");
   }
 
   /**
@@ -52,7 +58,10 @@ export class LambdaApiExample {
    */
   @func()
   build(): Directory {
-    return this.base().withExec(["yarn", "build"]).directory("./dist");
+    return this.base()
+      .withDirectory("/src/node_modules/", this.installDeps())
+      .withExec(["yarn", "build"])
+      .directory("./dist");
   }
 
   /**
@@ -61,7 +70,10 @@ export class LambdaApiExample {
    */
   @func()
   async test(): Promise<string> {
-    return this.base().withExec(["yarn", "test"]).stdout();
+    return this.base()
+      .withDirectory("/src/node_modules/", this.installDeps())
+      .withExec(["yarn", "test"])
+      .stdout();
   }
 
   /**
@@ -69,12 +81,11 @@ export class LambdaApiExample {
    */
   @func()
   zip(): File {
-    return (
-      this.base()
-        // .withExec(["yarn", "build"])
-        .withExec(["yarn", "zip"])
-        .file("./function.zip")
-    );
+    return this.base()
+      .withDirectory("/src/node_modules/", this.installDeps())
+      .withExec(["yarn", "build"])
+      .withExec(["yarn", "zip"])
+      .file("./function.zip");
   }
 
   /**
