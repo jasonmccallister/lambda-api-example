@@ -42,13 +42,14 @@ export class LambdaApiExample {
       .withExec(["apt", "update"])
       .withExec(["apt", "install", "zip"])
       .withWorkdir("/src")
-      .withDirectory("/src", this.source)
-      .withMountedCache("/root/.npm", dag.cacheVolume("node-20"));
+      .withDirectory("/src", this.source);
   }
 
   @func()
   installDeps(): Directory {
     return this.base()
+      .withMountedCache("/root/.yarn-cache", dag.cacheVolume("node-20"))
+      .withEnvVariable("YARN_CACHE_FOLDER", "/root/.yarn-cache")
       .withExec(["yarn", "install"])
       .directory("./node_modules");
   }
